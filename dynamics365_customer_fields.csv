@@ -1,0 +1,45 @@
+Entity,Field Name,Description
+Account,accountid,Unique identifier for the account
+Account,name,Account name
+Account,accountnumber,Account number
+Account,telephone1,Main phone
+Account,telephone2,Other phone
+Account,fax,Fax number
+Account,websiteurl,Website URL
+Account,emailaddress1,Primary email
+Account,address1_line1,Address line 1
+Account,address1_line2,Address line 2
+Account,address1_line3,Address line 3
+Account,address1_city,City
+Account,address1_stateorprovince,State or Province
+Account,address1_postalcode,ZIP/Postal Code
+Account,address1_country,Country
+Account,industrycode,Industry
+Account,revenue,Annual revenue
+Account,numberofemployees,Number of employees
+Account,ownershipcode,Ownership
+Account,tickersymbol,Ticker symbol
+Account,customertypecode,Customer type
+Account,statuscode,Status
+Account,createdon,Created on
+Account,modifiedon,Modified on
+Contact,contactid,Unique identifier for the contact
+Contact,fullname,Full name
+Contact,firstname,First name
+Contact,lastname,Last name
+Contact,emailaddress1,Primary email
+Contact,telephone1,Business phone
+Contact,mobilephone,Mobile phone
+Contact,fax,Fax
+Contact,address1_line1,Address line 1
+Contact,address1_line2,Address line 2
+Contact,address1_city,City
+Contact,address1_stateorprovince,State or Province
+Contact,address1_postalcode,ZIP/Postal Code
+Contact,address1_country,Country
+Contact,jobtitle,Job title
+Contact,parentcustomerid,Parent account
+Contact,preferredcontactmethodcode,Preferred contact method
+Contact,statuscode,Status
+Contact,createdon,Created on
+Contact,modifiedon,Modified on
