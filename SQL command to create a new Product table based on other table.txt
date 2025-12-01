@@ -1,0 +1,232 @@
+
+/* To CREATE TABLE */
+
+CREATE TABLE Product_List_Table (
+    Product_ID INT PRIMARY KEY,
+    Product_Name VARCHAR(255) NOT NULL,
+    Service_ID VARCHAR(50) NOT NULL,
+    Experience_Multiplier_ID VARCHAR(50) NOT NULL,
+    Location_Multiplier_ID VARCHAR(50) NOT NULL,
+    Exchange_Conversion_ID VARCHAR(50) NOT NULL,
+    Business_Type_ID VARCHAR(50) NOT NULL,
+    Blended_Rate_ID VARCHAR(50), -- Nullable because blended applies only in some cases
+    Discount_Rate_ID VARCHAR(50) NOT NULL,
+    Scope_Complexity_ID VARCHAR(50) NOT NULL,
+    SLA_ID VARCHAR(50) NOT NULL,
+    Risk_Buffer_ID VARCHAR(50) NOT NULL,
+    Contingency_ID VARCHAR(50) NOT NULL,
+    Rate_Card DECIMAL(18, 4) NOT NULL -- Final computed rate
+);
+
+
+/* Insert JUNIOR/MID/SENIOR (non-blended) combinations */
+INSERT INTO Product_List_Table (
+    Product_ID,
+    Product_Name,
+    Service_ID,
+    Experience_Multiplier_ID,
+    Location_Multiplier_ID,
+    Exchange_Conversion_ID,
+    Business_Type_ID,
+    Blended_Rate_ID,
+    Discount_Rate_ID,
+    Scope_Complexity_ID,
+    SLA_ID,
+    Risk_Buffer_ID,
+    Contingency_ID,
+    Rate_Card
+)
+SELECT
+    ROW_NUMBER() OVER (
+        ORDER BY
+            b.[Service ID],
+            e.[Experience Muliplier ID],
+            l.[Location Muliplier ID],
+            cur.[Exchange Conversion ID],
+            bt.[Business Type ID],
+            d.[Discount rate ID],
+            sc.[Scope Complexity ID],
+            sla.[SLA ID],
+            r.[Risk Buffer ID],
+            c.[Contingency ID],
+            m.[Type of Rate Card]
+    ) + (SELECT COUNT(*) FROM Product_List_Table) AS Product_ID,
+    b.[Service] AS Product_Name,
+    b.[Service ID],
+    e.[Experience Muliplier ID],
+    l.[Location Muliplier ID],
+    cur.[Exchange Conversion ID],
+    bt.[Business Type ID],
+    NULL AS Blended_Rate_ID,  -- non-blended rows
+    d.[Discount rate ID],
+    sc.[Scope Complexity ID],
+    sla.[SLA ID],
+    r.[Risk Buffer ID],
+    c.[Contingency ID],
+    CAST(
+        (
+            /* Adjusted in USD/hour */
+            b.[Baseline USD/hour]
+            * e.[Rate Card]
+            * l.[Rate Card]
+            * bt.[Conversion]
+            * sc.[Multiplier]
+            * sla.[Multiplier]
+        )
+        /* Apply Risk, Discount, Contingency */
+        * (1 + r.[Multiplier])
+        * (1 - d.[Discount])
+        * (1 + c.[Multiplier])
+        /* Convert to target currency and period */
+        * cur.[Conversion Rate (per 1 USD)]
+        * m.[Conversion]
+    AS DECIMAL(18,4)) AS Rate_Card
+FROM [Baseline Rate Card]       AS b
+CROSS JOIN [Experience Multiplier] AS e
+CROSS JOIN [Location Multiplier]   AS l
+CROSS JOIN [Currency Exchange]     AS cur
+CROSS JOIN [Monthly Rate Card]     AS m
+CROSS JOIN [Business Type Multiplier] AS bt
+CROSS JOIN [Discount Rates]        AS d
+CROSS JOIN [Scope Complexity]      AS sc
+CROSS JOIN [SLA]                   AS sla
+CROSS JOIN [Risk Buffer]           AS r
+CROSS JOIN [Contingency]           AS c
+WHERE e.[Experience Level] IN ('Junior','Mid','Senior');
+
+
+/* Insert BLENDED combinations (uses BRJ/BRM/BRS mix) */
+INSERT INTO Product_List_Table (
+    Product_ID,
+    Product_Name,
+    Service_ID,
+    Experience_Multiplier_ID,
+    Location_Multiplier_ID,
+    Exchange_Conversion_ID,
+    Business_Type_ID,
+    Blended_Rate_ID,
+    Discount_Rate_ID,
+    Scope_Complexity_ID,
+    SLA_ID,
+    Risk_Buffer_ID,
+    Contingency_ID,
+    Rate_Card
+)
+SELECT
+    ROW_NUMBER() OVER (
+        ORDER BY
+            b.[Service ID],
+            ej.[Experience Muliplier Name],   -- set marker
+            l.[Location Muliplier ID],
+            cur.[Exchange Conversion ID],
+            bt.[Business Type ID],
+            d.[Discount rate ID],
+            sc.[Scope Complexity ID],
+            sla.[SLA ID],
+            r.[Risk Buffer ID],
+            c.[Contingency ID],
+            m.[Type of Rate Card]
+    ) + (SELECT COUNT(*) FROM Product_List_Table) AS Product_ID,
+
+    b.[Service] AS Product_Name,
+    b.[Service ID],
+
+    /* Use the Mid-level ID as the representative Experience_Multiplier_ID of the set */
+    em.[Experience Muliplier ID] AS Experience_Multiplier_ID,
+
+    l.[Location Muliplier ID],
+    cur.[Exchange Conversion ID],
+    bt.[Business Type ID],
+
+    /* Record all three blended IDs as a delimited set */
+    CONCAT(brj.[Blended Rate ID], '|', brm.[Blended Rate ID], '|', brs.[Blended Rate ID]) AS Blended_Rate_ID,
+
+    d.[Discount rate ID],
+    sc.[Scope Complexity ID],
+    sla.[SLA ID],
+    r.[Risk Buffer ID],
+    c.[Contingency ID],
+
+    CAST(
+        (
+            /* Final JUNIOR USD/hour */
+            (
+                b.[Baseline USD/hour]
+                * ej.[Rate Card]
+                * l.[Rate Card]
+                * bt.[Conversion]
+                * sc.[Multiplier]
+                * sla.[Multiplier]
+            )
+            * (1 + r.[Multiplier])
+            * (1 - d.[Discount])
+            * (1 + c.[Multiplier])
+            * brj.[Conversion]  -- Junior blended %
+        )
+        +
+        (
+            /* Final MID USD/hour */
+            (
+                b.[Baseline USD/hour]
+                * em.[Rate Card]
+                * l.[Rate Card]
+                * bt.[Conversion]
+                * sc.[Multiplier]
+                * sla.[Multiplier]
+            )
+            * (1 + r.[Multiplier])
+            * (1 - d.[Discount])
+            * (1 + c.[Multiplier])
+            * brm.[Conversion]  -- Mid blended %
+        )
+        +
+        (
+            /* Final SENIOR USD/hour */
+            (
+                b.[Baseline USD/hour]
+                * es.[Rate Card]
+                * l.[Rate Card]
+                * bt.[Conversion]
+                * sc.[Multiplier]
+                * sla.[Multiplier]
+            )
+            * (1 + r.[Multiplier])
+            * (1 - d.[Discount])
+            * (1 + c.[Multiplier])
+            * brs.[Conversion]  -- Senior blended %
+        )
+        /* Convert to target currency and period */
+        * cur.[Conversion Rate (per 1 USD)]
+        * m.[Conversion]
+    AS DECIMAL(18,4)) AS Rate_Card
+
+FROM [Baseline Rate Card] AS b
+
+/* Experience Multiplier set joins (ensure same set by Name) */
+JOIN [Experience Multiplier] AS ej
+  ON ej.[Experience Level] = 'Junior'
+JOIN [Experience Multiplier] AS em
+  ON em.[Experience Level] = 'Mid'
+ AND em.[Experience Muliplier Name] = ej.[Experience Muliplier Name]
+JOIN [Experience Multiplier] AS es
+  ON es.[Experience Level] = 'Senior'
+ AND es.[Experience Muliplier Name] = ej.[Experience Muliplier Name]
+
+/* Blended % mix rows */
+JOIN [Blended Rate] AS brj ON brj.[Type of Role] = 'Junior'
+JOIN [Blended Rate] AS brm ON brm.[Type of Role] = 'Mid'
+JOIN [Blended Rate] AS brs ON brs.[Type of Role] = 'Senior'
+
+/* Other dimensions crossed */
+CROSS JOIN [Location Multiplier]         AS l
+CROSS JOIN [Currency Exchange]           AS cur
+CROSS JOIN [Monthly Rate Card]           AS m
+CROSS JOIN [Business Type Multiplier]    AS bt
+CROSS JOIN [Discount Rates]              AS d
+CROSS JOIN [Scope Complexity]            AS sc
+CROSS JOIN [SLA]                         AS sla
+CROSS JOIN [Risk Buffer]                 AS r
+CROSS JOIN [Contingency]                 AS c;
+
+
+
